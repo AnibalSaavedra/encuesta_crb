@@ -1,24 +1,27 @@
-# Encuesta Clínica Río Blanco
+# Encuesta Satisfacción CRB – con REPORTE_TO configurable
 
-Aplicación en Streamlit para la recolección de encuestas de satisfacción usuaria con:
+## Credenciales (dos opciones)
+**A) Local con `.env`** (incluido):
+```env
+SMTP_USER="estudios.preventivos@gmail.com"
+SMTP_PASS="utki wdeg orrl inmq"
+REPORTE_TO="estudios.preventivos@gmail.com"
+```
+> La app limpia espacios en `SMTP_PASS` automáticamente.
 
-- Aviso de privacidad con consentimiento obligatorio (Ley 21.719).
-- Almacenamiento de respuestas en CSV.
-- Envío automático de resultados al correo institucional.
+**B) Streamlit Cloud – `Settings → Secrets`**:
+```toml
+SMTP_USER = "estudios.preventivos@gmail.com"
+SMTP_PASS = "utki wdeg orrl inmq"
+REPORTE_TO = "estudios.preventivos@gmail.com"
+```
 
-## Uso
+## Ejecución local
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-1. Instalar dependencias:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. Crear archivo `.env` con credenciales SMTP.
-
-3. Ejecutar la app:
-   ```bash
-   streamlit run app.py
-   ```
-
-## Autor
-Clínica Río Blanco – Unidad de Gestión de Calidad
+## Notas
+- Cambia el correo de reportes solo editando `REPORTE_TO` (en `.env` o `st.secrets`), sin tocar el código.
+- Los resultados quedan en `respuestas_encuesta.csv` (modo append).
