@@ -1,40 +1,34 @@
 import os
 import streamlit as st
 import pandas as pd
-import smtplib
+import smtplib, ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 from PIL import Image
 
-# ---------- Carga de credenciales (soporta .env y st.secrets) ----------
+# ---------- Carga de credenciales ----------
 load_dotenv(override=True)
 SMTP_USER = os.getenv("SMTP_USER") or st.secrets.get("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASS") or st.secrets.get("SMTP_PASS")
 REPORTE_TO = os.getenv("REPORTE_TO") or st.secrets.get("REPORTE_TO") or "estudios.preventivos@gmail.com"
-
 if SMTP_PASS:
-    SMTP_PASS = SMTP_PASS.replace(" ", "")  # limpia espacios accidentales
+    SMTP_PASS = SMTP_PASS.replace(" ", "")  # elimina espacios
 
-# ---------- Configuración de página ----------
+# ---------- Página ----------
 st.set_page_config(page_title="Encuesta de Satisfacción – CRB", page_icon="🧪", layout="centered")
-
-# Mostrar logo de forma robusta (evita PIL.UnidentifiedImageError)
 def mostrar_logo(path):
     try:
         if os.path.exists(path) and os.path.getsize(path) > 0:
-            img = Image.open(path)
-            st.image(img, width=200)
+            st.image(Image.open(path), width=200)
     except Exception:
-        # Si falla, no bloquea la app
         pass
 
 mostrar_logo("logo_crb.png")
-
 st.title("Encuesta de Satisfacción – Toma de Muestras")
 st.write("Tu opinión es muy importante para mejorar nuestro servicio.")
 
-# ---------- Formulario ----------
+# ---------- Formulario (igual al original) ----------
 with st.form("form_encuesta", clear_on_submit=True):
     nombre = st.text_input("Nombre")
     correo = st.text_input("Correo (para confirmación)")
@@ -42,15 +36,39 @@ with st.form("form_encuesta", clear_on_submit=True):
     comentarios = st.text_area("Comentarios")
     enviado = st.form_submit_button("Enviar respuesta")
 
-def _faltantes():
-    faltan = []
-    if not SMTP_USER: faltan.append("SMTP_USER")
-    if not SMTP_PASS: faltan.append("SMTP_PASS")
-    if not REPORTE_TO: faltan.append("REPORTE_TO")
-    return faltan
+def enviar_correo(recip, subject, body):
+    # Intenta SSL:465 y luego STARTTLS:587
+    ctx = ssl.create_default_context()
+    # Primer intento: SSL 465
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as server:
+            server.login(SMTP_USER, SMTP_PASS)
+            msg = MIMEMultipart()
+            msg["From"] = SMTP_USER
+            msg["To"] = recip
+            msg["Subject"] = subject
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+            server.sendmail(SMTP_USER, recip, msg.as_string())
+        return True, "SSL465 OK"
+    except Exception as e_ssl:
+        # Segundo intento: STARTTLS 587
+        try:
+            with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                server.ehlo()
+                server.starttls(context=ctx)
+                server.login(SMTP_USER, SMTP_PASS)
+                msg = MIMEMultipart()
+                msg["From"] = SMTP_USER
+                msg["To"] = recip
+                msg["Subject"] = subject
+                msg.attach(MIMEText(body, "plain", "utf-8"))
+                server.sendmail(SMTP_USER, recip, msg.as_string())
+            return True, "STARTTLS587 OK"
+        except Exception as e_tls:
+            return False, f"SSL:{e_ssl} | TLS:{e_tls}"
 
 if enviado:
-    # Guardar respuesta en CSV
+    # Guardar CSV
     df = pd.DataFrame([[nombre, correo, satisfaccion, comentarios]],
                       columns=["Nombre", "Correo", "Satisfacción", "Comentarios"])
     if os.path.exists("respuestas_encuesta.csv"):
@@ -58,47 +76,28 @@ if enviado:
     else:
         df.to_csv("respuestas_encuesta.csv", index=False, encoding="utf-8")
 
-    # Enviar correos (si hay credenciales)
-    faltan = _faltantes()
-    if faltan:
-        st.warning("⚠️ Respuesta guardada pero no se pudo enviar el correo. "
-                   f"Faltan variables: {', '.join(faltan)} (usa .env o st.secrets).")
+    if not (SMTP_USER and SMTP_PASS and REPORTE_TO):
+        faltan = [k for k,v in {"SMTP_USER":SMTP_USER,"SMTP_PASS":SMTP_PASS,"REPORTE_TO":REPORTE_TO}.items() if not v]
+        st.warning("⚠️ Respuesta guardada pero no se pudo enviar el correo. Faltan: " + ", ".join(faltan))
     else:
-        try:
-            # Correo para el equipo (reporte)
-            body_reporte = f"""                📩 Nuevo reporte de Encuesta CRB
+        body_rep = f"""            📩 Nuevo reporte de Encuesta CRB
 
-            Nombre: {nombre}
-            Correo: {correo}
-            Satisfacción: {satisfaccion}
+        Nombre: {nombre}
+        Correo: {correo}
+        Satisfacción: {satisfaccion}
+        Comentarios: {comentarios}
+        """
+        ok1, info1 = enviar_correo(REPORTE_TO, "Nuevo reporte – Encuesta de Satisfacción CRB", body_rep)
+        ok2, info2 = (True, "skip")
+        if correo:
+            body_usr = f"""                Hola {nombre or ''},
+            Gracias por responder la Encuesta de Satisfacción – CRB.
+            Tu nivel de satisfacción: {satisfaccion}
             Comentarios: {comentarios}
             """
-            msg1 = MIMEMultipart()
-            msg1["From"] = SMTP_USER
-            msg1["To"] = REPORTE_TO
-            msg1["Subject"] = "Nuevo reporte – Encuesta de Satisfacción CRB"
-            msg1.attach(MIMEText(body_reporte, "plain", "utf-8"))
+            ok2, info2 = enviar_correo(correo, "Confirmación – Encuesta de Satisfacción CRB", body_usr)
 
-            # Correo de confirmación opcional al participante
-            enviar_confirmacion = bool(correo)
-            if enviar_confirmacion:
-                body_usr = f"""                    Hola {nombre or ''},
-                Gracias por responder la Encuesta de Satisfacción – CRB.
-                Tu nivel de satisfacción: {satisfaccion}
-                Comentarios: {comentarios}
-                """
-                msg2 = MIMEMultipart()
-                msg2["From"] = SMTP_USER
-                msg2["To"] = correo
-                msg2["Subject"] = "Confirmación – Encuesta de Satisfacción CRB"
-                msg2.attach(MIMEText(body_usr, "plain", "utf-8"))
-
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(SMTP_USER, SMTP_PASS)
-                server.sendmail(SMTP_USER, REPORTE_TO, msg1.as_string())
-                if enviar_confirmacion:
-                    server.sendmail(SMTP_USER, correo, msg2.as_string())
-
+        if ok1 and ok2:
             st.success("✅ Respuesta enviada y correos entregados correctamente.")
-        except Exception as e:
-            st.warning(f"⚠️ Respuesta guardada pero hubo un problema enviando el correo: {e}")
+        else:
+            st.warning(f"⚠️ Respuesta guardada pero hubo un problema enviando el correo. Detalles: reporte={info1}, confirmación={info2}")

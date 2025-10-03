@@ -1,17 +1,14 @@
-# Encuesta Satisfacción CRB – Fix logo + credenciales actualizadas
+# Encuesta Satisfacción CRB – compatibilidad SMTP (SSL y STARTTLS)
 
-## Credenciales
-**Local (.env incluido):**
-```env
-SMTP_USER="estudios.preventivos@gmail.com"
-SMTP_PASS="utki wdeg orrl inmq"
-REPORTE_TO="estudios.preventivos@gmail.com"
-```
+## Configuración de Google (obligatorio)
+1) Habilita **Verificación en 2 pasos** en la cuenta `estudios.preventivos@gmail.com`.
+2) Crea una **Contraseña de aplicación** (tipo: Mail / Dispositivo: Other).
+3) Copia esa contraseña aquí como `SMTP_PASS` (sin espacios).
 
-**Streamlit Cloud – `Settings → Secrets`:**
+## Secrets en Streamlit Cloud
 ```toml
 SMTP_USER = "estudios.preventivos@gmail.com"
-SMTP_PASS = "utki wdeg orrl inmq"
+SMTP_PASS = "utkiwdegorrlinmq"
 REPORTE_TO = "estudios.preventivos@gmail.com"
 ```
 
@@ -21,6 +18,9 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Notas
-- Logo válido incluido (`logo_crb.png`) y manejo robusto ante errores (si falta o está corrupto, la app sigue).
-- Resultados en `respuestas_encuesta.csv` (modo append).
+## Anotaciones
+- La app prueba **SSL (465)** y, si falla, **STARTTLS (587)**.
+- Si ves `535 5.7.8 Username and Password not accepted`, revisa:
+  - Que el **SMTP_USER** coincide con la cuenta que generó la **contraseña de aplicación**.
+  - Que pegaste la contraseña **sin espacios**.
+  - Que en **Settings → Secrets** no haya comillas curvas o caracteres extraños.
