@@ -5,6 +5,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
+from PIL import Image
 
 # ---------- Carga de credenciales (soporta .env y st.secrets) ----------
 load_dotenv(override=True)
@@ -17,8 +18,19 @@ if SMTP_PASS:
 
 # ---------- Configuración de página ----------
 st.set_page_config(page_title="Encuesta de Satisfacción – CRB", page_icon="🧪", layout="centered")
-if os.path.exists("logo_crb.png"):
-    st.image("logo_crb.png", width=200)
+
+# Mostrar logo de forma robusta (evita PIL.UnidentifiedImageError)
+def mostrar_logo(path):
+    try:
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            img = Image.open(path)
+            st.image(img, width=200)
+    except Exception:
+        # Si falla, no bloquea la app
+        pass
+
+mostrar_logo("logo_crb.png")
+
 st.title("Encuesta de Satisfacción – Toma de Muestras")
 st.write("Tu opinión es muy importante para mejorar nuestro servicio.")
 
@@ -30,6 +42,13 @@ with st.form("form_encuesta", clear_on_submit=True):
     comentarios = st.text_area("Comentarios")
     enviado = st.form_submit_button("Enviar respuesta")
 
+def _faltantes():
+    faltan = []
+    if not SMTP_USER: faltan.append("SMTP_USER")
+    if not SMTP_PASS: faltan.append("SMTP_PASS")
+    if not REPORTE_TO: faltan.append("REPORTE_TO")
+    return faltan
+
 if enviado:
     # Guardar respuesta en CSV
     df = pd.DataFrame([[nombre, correo, satisfaccion, comentarios]],
@@ -40,9 +59,10 @@ if enviado:
         df.to_csv("respuestas_encuesta.csv", index=False, encoding="utf-8")
 
     # Enviar correos (si hay credenciales)
-    if not (SMTP_USER and SMTP_PASS):
+    faltan = _faltantes()
+    if faltan:
         st.warning("⚠️ Respuesta guardada pero no se pudo enviar el correo. "
-                   "Faltan SMTP_USER/SMTP_PASS (usa .env, variables de entorno o st.secrets).")
+                   f"Faltan variables: {', '.join(faltan)} (usa .env o st.secrets).")
     else:
         try:
             # Correo para el equipo (reporte)
